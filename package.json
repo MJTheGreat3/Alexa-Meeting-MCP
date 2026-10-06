@@ -1,0 +1,29 @@
+{
+  "name": "alexa-mcp-meeting-pipeline",
+  "version": "0.1.0",
+  "description": "MCP server: meeting transcript -> Linear issues + Notion summary + Slack notify",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test:client": "tsx src/client/testClient.ts"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@linear/sdk": "^97.0.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@notionhq/client": "^5.27.0",
+    "@slack/web-api": "^8.2.0",
+    "dotenv": "^18.0.5",
+    "express": "^5.2.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.4",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
