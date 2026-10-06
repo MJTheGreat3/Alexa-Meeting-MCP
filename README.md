@@ -72,7 +72,3 @@ The extraction of action items from raw meeting text is the *agent's* reasoning 
 - [x] End-to-end test client proving the full tool-call loop works against real APIs
 - [ ] Simulated Alexa+ voice-turn UI ("Route B" companion) fronting this same server
 - [ ] Real Alexa+ Agent Skill integration, pending device/skill access during the hackathon window
-
-## Hackathon compliance note
-
-This satisfies the stricter "real MCP server" requirement: a working MCP server implementation with real tool handlers making live API calls, plus a real client (the test harness) that connects to and invokes it. If real Alexa+ device access isn't available during the hackathon, this same server becomes the backend for a simulated voice-turn web UI (Route B) — no duplicated work.
