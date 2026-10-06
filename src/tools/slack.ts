@@ -34,6 +34,14 @@ export async function listUsers() {
     .map((m) => ({ id: m.id, name: m.name, realName: m.real_name }));
 }
 
+export async function listRecentMessages(input: { channel: string; limit?: number }) {
+  const result = await getClient().conversations.history({
+    channel: input.channel,
+    limit: input.limit ?? 20,
+  });
+  return (result.messages ?? []).map((m) => ({ ts: m.ts, text: m.text }));
+}
+
 export async function updateMessage(input: { channel: string; ts: string; text: string }) {
   const result = await getClient().chat.update({
     channel: input.channel,

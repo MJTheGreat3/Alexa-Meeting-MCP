@@ -22,10 +22,12 @@ Two kinds of requests:
    - notion_create_meeting_summary once, with all action items (and their Linear issue URLs) plus the raw transcript.
    - slack_notify_channel once, summarizing with links.
 
-2. A follow-up instruction about existing work - e.g. "mark X done", "remove/cancel Y", "add this detail to Z", "assign this to someone", "update the Notion page", "edit that Slack message". Do NOT re-run the full pipeline. Instead:
-   - Find the right item first: linear_list_issues (by team) to resolve an issue by title/description, or use an identifier/id already mentioned.
-   - To assign or mention a person, resolve their id first with linear_list_users (Linear) or slack_list_users (Slack) - match by name. For a Slack mention, include <@USER_ID> in the message text.
-   - Use the single targeted tool for the change: linear_update_issue (edit), linear_set_issue_status (complete/reopen/etc.), linear_archive_issue (remove), linear_add_comment (add detail/notes), notion_append_notes (add detail to a page), notion_set_action_item_checked (check off an item on a summary page), notion_archive_page (remove a page), slack_update_message (edit a posted message).
+2. A follow-up instruction about existing work - e.g. "mark X done", "remove/cancel Y", "add this detail to Z", "assign this to someone", "update the Notion page", "edit that Slack message". Do NOT re-run the full pipeline. The user will normally refer to things by name/content, not by id - always resolve first:
+   - An issue: linear_list_issues (by team), match by title/description, or use an identifier already mentioned (e.g. MEE-7).
+   - A Notion page: notion_search_pages with a keyword from its title, match the best result.
+   - A specific Slack message to edit: slack_list_recent_messages on the right channel, match by its text content to get its ts.
+   - A person to assign or mention: linear_list_users (Linear) or slack_list_users (Slack), match by name. For a Slack mention, include <@USER_ID> in the message text.
+   Then use the single targeted tool for the change: linear_update_issue (edit), linear_set_issue_status (complete/reopen/etc.), linear_archive_issue (remove), linear_add_comment (add detail/notes), notion_append_notes (add detail to a page), notion_set_action_item_checked (check off an item on a summary page), notion_archive_page (remove a page), slack_update_message (edit a posted message).
 
 In both cases, make reasonable choices and proceed without asking the user clarifying questions. Reply with a short, spoken-style confirmation of what you did, suitable for a voice assistant to read aloud.`;
 

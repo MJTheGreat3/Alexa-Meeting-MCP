@@ -179,6 +179,25 @@ export function buildServer() {
   );
 
   server.registerTool(
+    "notion_search_pages",
+    {
+      title: "Search Notion Pages",
+      description:
+        "Find existing Notion pages by title/keyword, with their ids and urls. Use this to resolve a page the user refers to by name (e.g. 'the standup summary') before appending notes, checking off items, or archiving it. Returns most recently edited first.",
+      inputSchema: {
+        query: z.string().optional().describe("Title/keyword to search for, omit to list recent pages"),
+      },
+    },
+    async ({ query }) => {
+      try {
+        return text(await notion.searchPages({ query }));
+      } catch (err) {
+        return errorText(err);
+      }
+    },
+  );
+
+  server.registerTool(
     "notion_create_meeting_summary",
     {
       title: "Create Notion Meeting Summary",
@@ -320,14 +339,34 @@ export function buildServer() {
   );
 
   server.registerTool(
+    "slack_list_recent_messages",
+    {
+      title: "List Recent Slack Messages",
+      description:
+        "List recent messages in a channel, with their text and ts (timestamp id). Use this to find the ts of a message the user refers to by content (e.g. 'the status update') before editing it with slack_update_message.",
+      inputSchema: {
+        channel: z.string().describe("Slack channel id, from slack_list_channels"),
+        limit: z.number().optional().describe("Max messages to return, default 20"),
+      },
+    },
+    async ({ channel, limit }) => {
+      try {
+        return text(await slack.listRecentMessages({ channel, limit }));
+      } catch (err) {
+        return errorText(err);
+      }
+    },
+  );
+
+  server.registerTool(
     "slack_update_message",
     {
       title: "Edit Slack Message",
       description:
-        "Edit a previously posted Slack message, e.g. to update a status summary once tasks are completed.",
+        "Edit a previously posted Slack message, e.g. to update a status summary once tasks are completed. Use slack_list_recent_messages first if you only know the message by its content, not its ts.",
       inputSchema: {
         channel: z.string().describe("Slack channel id"),
-        ts: z.string().describe("Timestamp id of the message to edit, from the original post's result"),
+        ts: z.string().describe("Timestamp id of the message to edit, from the original post's result or slack_list_recent_messages"),
         text: z.string().describe("New message text"),
       },
     },

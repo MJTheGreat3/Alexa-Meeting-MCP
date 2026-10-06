@@ -97,6 +97,29 @@ export async function setActionItemChecked(input: {
   return { id: match.id, checked: input.checked };
 }
 
+function extractTitle(page: { properties?: Record<string, unknown> }): string {
+  const properties = page.properties ?? {};
+  for (const value of Object.values(properties)) {
+    const prop = value as { type?: string; title?: { plain_text: string }[] };
+    if (prop.type === "title" && prop.title) {
+      return prop.title.map((t) => t.plain_text).join("");
+    }
+  }
+  return "(untitled)";
+}
+
+export async function searchPages(input: { query?: string }) {
+  const result = await getClient().search({
+    query: input.query,
+    filter: { property: "object", value: "page" },
+    sort: { timestamp: "last_edited_time", direction: "descending" },
+  });
+  return result.results
+    .filter((r): r is typeof r & { properties: Record<string, unknown>; url: string } => "properties" in r)
+    .slice(0, 15)
+    .map((page) => ({ id: page.id, title: extractTitle(page), url: page.url }));
+}
+
 export async function archivePage(input: { pageId: string }) {
   await getClient().pages.update({ page_id: input.pageId, archived: true });
   return { id: input.pageId, archived: true };
