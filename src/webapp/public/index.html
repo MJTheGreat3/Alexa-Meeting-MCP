@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Meeting Pipeline — Alexa+ simulator</title>
+<style>
+  :root {
+    --bg: #0b0d12;
+    --panel: #151823;
+    --panel-2: #1d2130;
+    --text: #e8eaf0;
+    --muted: #8b93a7;
+    --accent: #5b8cff;
+    --accent-2: #27c99a;
+    --error: #ff6b6b;
+    --border: #262b3a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 16px 64px;
+  }
+  header { text-align: center; margin-bottom: 28px; }
+  h1 { font-size: 20px; margin: 0 0 4px; font-weight: 600; }
+  header p { color: var(--muted); font-size: 13px; margin: 0; }
+
+  .mic-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 24px; }
+  .mic-btn {
+    width: 84px; height: 84px; border-radius: 50%;
+    background: var(--accent); border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 0 rgba(91,140,255,0.5);
+    transition: background 0.2s;
+  }
+  .mic-btn:hover { background: #6f99ff; }
+  .mic-btn.listening { background: var(--accent-2); animation: pulse 1.4s infinite; }
+  .mic-btn svg { width: 32px; height: 32px; fill: white; }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(39,201,154,0.5); }
+    70% { box-shadow: 0 0 0 18px rgba(39,201,154,0); }
+    100% { box-shadow: 0 0 0 0 rgba(39,201,154,0); }
+  }
+  .mic-label { color: var(--muted); font-size: 12px; }
+
+  .panel {
+    width: 100%; max-width: 640px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: 14px; padding: 18px;
+    margin-bottom: 16px;
+  }
+  textarea {
+    width: 100%; min-height: 110px; resize: vertical;
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px; font-size: 13px; font-family: inherit; line-height: 1.5;
+  }
+  .row { display: flex; gap: 10px; margin-top: 10px; align-items: center; flex-wrap: wrap; }
+  button.action {
+    background: var(--accent); color: white; border: none;
+    padding: 9px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500;
+  }
+  button.action:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.ghost {
+    background: transparent; color: var(--muted); border: 1px solid var(--border);
+    padding: 9px 14px; border-radius: 8px; cursor: pointer; font-size: 13px;
+  }
+  .status { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+  .log { width: 100%; max-width: 640px; display: flex; flex-direction: column; gap: 10px; }
+  .turn { border-radius: 12px; padding: 12px 14px; font-size: 13px; line-height: 1.5; border: 1px solid var(--border); }
+  .turn.user { background: var(--panel-2); align-self: flex-end; }
+  .turn.tool_call { background: #1a2238; border-color: #2c3a66; }
+  .turn.tool_result { background: #15241f; border-color: #214636; }
+  .turn.tool_result.error { background: #2a1818; border-color: #5a2a2a; }
+  .turn.final { background: #1a2a1f; border-color: #2a5a3a; font-weight: 500; }
+  .turn .kicker { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+  .turn pre { margin: 6px 0 0; white-space: pre-wrap; word-break: break-word; font-size: 12px; color: var(--muted); }
+  .turn a { color: var(--accent); }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Meeting Pipeline — Alexa+ simulator</h1>
+    <p>Simulated voice turn &middot; real MCP server &middot; real Linear/Notion/Slack calls</p>
+  </header>
+
+  <div class="mic-wrap">
+    <button class="mic-btn" id="micBtn" title="Speak your meeting notes">
+      <svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>
+    </button>
+    <div class="mic-label" id="micLabel">Tap to speak, or type below</div>
+  </div>
+
+  <div class="panel">
+    <textarea id="transcript" placeholder="Paste or speak meeting notes...">Standup - Oct 6
+Priya: Checkout page still throws a 500 when the cart is empty, need someone on that today.
+Dev: I'll also write up the API rate-limit doc so support stops getting paged for it.
+Priya: And can someone ping the team once both are filed so folks know to stop retrying?</textarea>
+    <div class="row">
+      <button class="action" id="sendBtn">Send to agent</button>
+      <button class="ghost" id="clearBtn">Clear log</button>
+      <span class="status" id="status"></span>
+    </div>
+  </div>
+
+  <div class="log" id="log"></div>
+
+<script>
+  const micBtn = document.getElementById('micBtn');
+  const micLabel = document.getElementById('micLabel');
+  const transcriptEl = document.getElementById('transcript');
+  const sendBtn = document.getElementById('sendBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const statusEl = document.getElementById('status');
+  const logEl = document.getElementById('log');
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recognizing = false;
+  if (SpeechRecognition) {
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+
+    micBtn.addEventListener('click', async () => {
+      if (recognizing) { recognition.stop(); return; }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((t) => t.stop());
+      } catch (err) {
+        micLabel.textContent = 'Mic permission denied, check browser/site settings';
+        console.error('getUserMedia failed:', err);
+        return;
+      }
+      try {
+        recognition.start();
+      } catch (err) {
+        console.error('recognition.start() failed:', err);
+      }
+    });
+    recognition.onstart = () => {
+      recognizing = true;
+      micBtn.classList.add('listening');
+      micLabel.textContent = 'Listening...';
+    };
+    recognition.onend = () => {
+      recognizing = false;
+      micBtn.classList.remove('listening');
+      if (micLabel.textContent === 'Listening...') {
+        micLabel.textContent = 'Tap to speak, or type below';
+      }
+    };
+    recognition.onresult = (event) => {
+      const said = event.results[0][0].transcript;
+      transcriptEl.value = (transcriptEl.value ? transcriptEl.value + '\n' : '') + said;
+    };
+    recognition.onerror = (event) => {
+      recognizing = false;
+      micBtn.classList.remove('listening');
+      console.error('SpeechRecognition error:', event.error);
+      const messages = {
+        'not-allowed': 'Mic permission denied, check browser/site settings',
+        'service-not-allowed': 'Speech service blocked, check browser/site settings',
+        'no-speech': 'Did not hear anything, try again',
+        'audio-capture': 'No microphone found',
+        network: 'Network error reaching speech service',
+      };
+      micLabel.textContent = messages[event.error] || ('Mic error: ' + event.error + ', try typing');
+    };
+  } else {
+    micLabel.textContent = 'Voice input not supported in this browser, type below';
+    micBtn.disabled = true;
+    micBtn.style.opacity = 0.4;
+  }
+
+  function addTurn(cls, kicker, bodyHtml) {
+    const div = document.createElement('div');
+    div.className = 'turn ' + cls;
+    div.innerHTML = '<div class="kicker">' + kicker + '</div>' + bodyHtml;
+    logEl.appendChild(div);
+    div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }
+
+  function linkify(text) {
+    return text.replace(/https?:\/\/\S+/g, (url) => '<a href="' + url + '" target="_blank" rel="noopener">' + url + '</a>');
+  }
+
+  function renderResult(result) {
+    const str = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+    return '<pre>' + linkify(str.replace(/</g, '&lt;')) + '</pre>';
+  }
+
+  function speak(text) {
+    if (!window.speechSynthesis) return;
+    const utter = new SpeechSynthesisUtterance(text);
+    window.speechSynthesis.speak(utter);
+  }
+
+  async function send() {
+    const transcript = transcriptEl.value.trim();
+    if (!transcript) return;
+    sendBtn.disabled = true;
+    statusEl.textContent = 'Agent is working...';
+    addTurn('user', 'You said', '<div>' + transcript.replace(/</g, '&lt;').replace(/\n/g, '<br>') + '</div>');
+
+    try {
+      const res = await fetch('/api/voice-turn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Request failed');
+
+      for (const turn of data.turns) {
+        if (turn.type === 'tool_call') {
+          addTurn('tool_call', 'Calling ' + turn.tool, renderResult(turn.args));
+        } else if (turn.type === 'tool_result') {
+          addTurn('tool_result' + (turn.isError ? ' error' : ''), turn.tool + ' result', renderResult(turn.result));
+        } else if (turn.type === 'final') {
+          addTurn('final', 'Alexa+', '<div>' + turn.text.replace(/</g, '&lt;') + '</div>');
+          speak(turn.text);
+        }
+      }
+      statusEl.textContent = 'Done';
+    } catch (err) {
+      addTurn('tool_result error', 'Error', '<div>' + String(err.message || err).replace(/</g, '&lt;') + '</div>');
+      statusEl.textContent = 'Failed';
+    } finally {
+      sendBtn.disabled = false;
+    }
+  }
+
+  sendBtn.addEventListener('click', send);
+  clearBtn.addEventListener('click', () => { logEl.innerHTML = ''; statusEl.textContent = ''; });
+</script>
+</body>
+</html>

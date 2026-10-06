@@ -23,7 +23,12 @@ src/
     notion.ts           Notion SDK calls (create meeting summary page)
     slack.ts             Slack SDK calls (list channels, post message)
   client/
-    testClient.ts       End-to-end MCP client harness with a sample transcript
+    testClient.ts       Scripted end-to-end MCP client harness (Route A proof)
+  webapp/
+    agent.ts             Groq tool-calling loop: connects to the MCP server as a
+                          real client, lets the LLM decide which tools to call
+    server.ts            Express app serving the simulator UI + /api/voice-turn
+    public/index.html     Simulated Alexa+ voice-turn UI (mic input + spoken reply)
 ```
 
 The extraction of action items from raw meeting text is the *agent's* reasoning step (Alexa+, Claude, etc.) — it happens before any tool call. The server itself only performs the deterministic actions once the agent has decided what to do: create this issue, file this summary, notify this channel.
@@ -65,10 +70,31 @@ The extraction of action items from raw meeting text is the *agent's* reasoning 
    npm run test:client
    ```
 
+## Route B: simulated Alexa+ voice-turn UI
+
+A web UI that mimics an Alexa+ voice interaction, backed by a real LLM tool-calling agent (not scripted) that drives the same MCP server over the same Streamable HTTP transport.
+
+1. Get a free Groq API key at [console.groq.com/keys](https://console.groq.com/keys) (no card needed), set `GROQ_API_KEY` in `.env`.
+2. With the MCP server already running (`npm run dev`), start the simulator in another terminal:
+   ```
+   npm run webapp
+   ```
+3. Open `http://localhost:3334`. Tap the mic (uses the browser's Web Speech API) or type/paste meeting notes, then "Send to agent."
+
+What happens under the hood: the browser posts the transcript to `/api/voice-turn` → the backend (`src/webapp/agent.ts`) connects to the MCP server as a real MCP client, fetches the live tool list, and hands it to Groq (`openai/gpt-oss-120b`) as function-calling tools. The model itself decides what action items exist and which tools to call, in what order — the UI streams back each tool call/result as a conversation turn, then speaks the final spoken-style summary aloud via `speechSynthesis`.
+
+This is a genuine agent loop, not a hardcoded script — swap the Groq call for a real Alexa+ Agent Skill invocation later and the MCP server underneath doesn't change.
+
 ## Status
 
 - [x] Real MCP server, Streamable HTTP transport, spec 2025-06-18
 - [x] Live tool handlers for Linear, Notion, Slack (official TypeScript SDKs: `@linear/sdk`, `@notionhq/client`, `@slack/web-api`)
 - [x] End-to-end test client proving the full tool-call loop works against real APIs
-- [ ] Simulated Alexa+ voice-turn UI ("Route B" companion) fronting this same server
+- [x] Simulated Alexa+ voice-turn UI ("Route B" companion), real Groq tool-calling agent, fronting this same server
 - [ ] Real Alexa+ Agent Skill integration, pending device/skill access during the hackathon window
+
+## Hackathon compliance note
+
+This satisfies the stricter "real MCP server" requirement (Route A): a working MCP server implementation with real tool handlers making live API calls, plus real clients (the test harness, and the Route B agent) that connect to and invoke it over the real Streamable HTTP transport.
+
+It also satisfies the simulated-experience path (Route B) independently: a web app that mimics the Alexa+ voice interaction, backed by a real agent loop (Groq function-calling) driving a real backend — not a mockup with hardcoded responses. Same MCP server underneath either way, so if real Alexa+ device access becomes available during the hackathon, it plugs in without touching the server.
