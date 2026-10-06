@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import re
 import time
 from pathlib import Path
 
@@ -11,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 BACKEND_URL = os.environ.get("ROUTE_B_BACKEND_URL", "http://localhost:3334")
-TYPE_DELAY_SECONDS = 0.014
+TYPE_DELAY_PER_WORD = 0.045
 
 st.set_page_config(page_title="Meeting Pipeline", page_icon="\U0001F399️", layout="centered")
 
@@ -146,13 +147,17 @@ if send_clicked:
     else:
         did_animate = True
         with log_container:
+            for exchange in st.session_state.exchanges:
+                render_exchange(exchange["user"], exchange["turns"])
+
             with st.chat_message("user"):
                 placeholder = st.empty()
                 shown = ""
-                for ch in user_text:
-                    shown += ch
+                for token in re.split(r"(\s+)", user_text):
+                    shown += token
                     placeholder.write(shown + "▌")
-                    time.sleep(TYPE_DELAY_SECONDS)
+                    if token.strip():
+                        time.sleep(TYPE_DELAY_PER_WORD)
                 placeholder.write(user_text)
 
             with st.chat_message("assistant", avatar="\U0001F916"):
@@ -175,10 +180,7 @@ if send_clicked:
 
             render_tail(turns)
 
-            for exchange in st.session_state.exchanges:
-                render_exchange(exchange["user"], exchange["turns"])
-
-        st.session_state.exchanges.insert(0, {"user": user_text, "turns": turns})
+        st.session_state.exchanges.append({"user": user_text, "turns": turns})
         st.session_state.audio_key += 1
         st.session_state.last_audio_hash = None
         st.session_state.clear_transcript = True

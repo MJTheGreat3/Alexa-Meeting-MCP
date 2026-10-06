@@ -66,7 +66,7 @@ export async function runMeetingPipelineTurn(transcript: string): Promise<{
       { role: "user", content: transcript },
     ];
 
-    const MAX_ITERATIONS = 10;
+    const MAX_ITERATIONS = 30;
     for (let i = 0; i < MAX_ITERATIONS; i++) {
       const completion = await groq.chat.completions.create({
         model,
