@@ -1,51 +1,45 @@
 # Meeting-to-Tasks MCP Server
 
-Built for Amazon's "Build, Ship, Shape" Developer Hackathon 2026 — Alexa+ track.
-
 A real [Model Context Protocol](https://modelcontextprotocol.io) server (Streamable HTTP transport) that turns meeting notes into coordinated action across three business systems:
 
 **Meeting notes/transcript → Linear issues → Notion summary → Slack notification**
 
-This is the "Route A" implementation: an actual MCP server with real tool handlers that make live API calls to Linear, Notion, and Slack — not a mock or a README-only claim. It's designed so an agent (Alexa+, or any MCP-speaking client) can drive the whole workflow by calling these tools in sequence after reasoning over a meeting transcript.
-
-## Why this workflow
-
-Rather than exposing generic CRUD tools per system, the server is scoped tightly around one deep, end-to-end pipeline: extract action items from a meeting, file them as tracked work, summarize the meeting durably, and notify the team — all from a single spoken or typed request.
+An actual MCP server with real tool handlers that make live API calls to Linear, Notion, and Slack — not a mock. It's designed so an agent (Alexa+, or any MCP-speaking client) can drive the whole workflow by calling these tools in sequence after reasoning over a meeting transcript, and to handle natural follow-ups afterward (mark something done, reassign it, edit a Notion page, remove a task) without needing raw ids — the agent resolves names via its own discovery tools first.
 
 ## Architecture
 
 ```
 src/
-  server.ts            MCP server definition, registers all 5 tools
+  server.ts            MCP server definition, registers all tools
   index.ts             Express app, Streamable HTTP transport, entry point
   tools/
-    linear.ts           Linear SDK calls (list teams, create issue)
-    notion.ts           Notion SDK calls (create meeting summary page)
-    slack.ts             Slack SDK calls (list channels, post message)
+    linear.ts           Linear SDK calls
+    notion.ts           Notion SDK calls
+    slack.ts             Slack SDK calls
   client/
-    testClient.ts       Scripted end-to-end MCP client harness (Route A proof)
+    testClient.ts       Scripted end-to-end MCP client harness
   webapp/
     agent.ts             Groq tool-calling loop: connects to the MCP server as a
                           real client, lets the LLM decide which tools to call
-    server.ts            Express app: /api/voice-turn (agent), /api/transcribe
-                          (Groq Whisper), + serves the static HTML frontend
-    public/index.html     Static HTML frontend (alternate to Streamlit)
+    server.ts            Express app: /api/voice-turn (agent, streamed as NDJSON),
+                          /api/transcribe (Groq Whisper), + serves the static HTML UI
+    public/index.html     Static HTML voice-turn UI (alternate to Streamlit)
 streamlit_app/
-  app.py                 Streamlit frontend (primary), calls the same backend
+  app.py                 Streamlit voice-turn UI (primary), calls the same backend
   requirements.txt
 ```
 
-The extraction of action items from raw meeting text is the *agent's* reasoning step (Alexa+, Claude, etc.) — it happens before any tool call. The server itself only performs the deterministic actions once the agent has decided what to do: create this issue, file this summary, notify this channel.
+The extraction of action items from raw meeting text is the *agent's* reasoning step (Alexa+, Claude, etc.) — it happens before any tool call. The server itself only performs the deterministic actions once the agent has decided what to do.
 
 ## Tools exposed
 
-| Tool | System | Purpose |
-|---|---|---|
-| `linear_list_teams` | Linear | Discover team ids (needed before creating an issue) |
-| `linear_create_issue` | Linear | Create one issue for one action item |
-| `notion_create_meeting_summary` | Notion | File a structured summary page: action items (linked to their Linear issues) + raw notes |
-| `slack_list_channels` | Slack | Discover channel ids (needed before notifying) |
-| `slack_notify_channel` | Slack | Post a message to a channel |
+**Linear** — `linear_list_teams`, `linear_list_users`, `linear_list_issues`, `linear_create_issue`, `linear_update_issue`, `linear_set_issue_status`, `linear_archive_issue`, `linear_add_comment`
+
+**Notion** — `notion_search_pages`, `notion_create_meeting_summary`, `notion_append_notes`, `notion_set_action_item_checked`, `notion_archive_page`
+
+**Slack** — `slack_list_channels`, `slack_list_users`, `slack_list_recent_messages`, `slack_notify_channel`, `slack_update_message`
+
+The `list_*`/`search_*` tools exist so the agent can resolve something the user names in plain language (a team, a person, a page, a past message) into the id another tool needs, without the user ever having to supply one.
 
 ## Setup
 
@@ -61,7 +55,7 @@ The extraction of action items from raw meeting text is the *agent's* reasoning 
 
    - **Linear**: Settings → API → Personal API keys → create one. Copy a team id from `linear_list_teams` output (or Linear's UI) into `LINEAR_TEAM_ID`.
    - **Notion**: Create an integration at [notion.so/my-integrations](https://www.notion.so/my-integrations), copy its secret into `NOTION_API_KEY`. Then share a parent page with that integration in Notion's UI and copy that page's id into `NOTION_PARENT_PAGE_ID`.
-   - **Slack**: Create an app at [api.slack.com/apps](https://api.slack.com/apps), add OAuth scopes `chat:write`, `channels:read`, `groups:read`, install it to your workspace, and copy the Bot User OAuth Token into `SLACK_BOT_TOKEN`. Invite the bot to whichever channel you want it posting in.
+   - **Slack**: Create an app at [api.slack.com/apps](https://api.slack.com/apps), add OAuth scopes `chat:write`, `channels:read`, `groups:read`, `users:read`, `channels:history`, install it to your workspace, and copy the Bot User OAuth Token into `SLACK_BOT_TOKEN`. Invite the bot to whichever channel you want it posting in.
 
 3. Start the MCP server:
    ```
@@ -74,9 +68,9 @@ The extraction of action items from raw meeting text is the *agent's* reasoning 
    npm run test:client
    ```
 
-## Route B: simulated Alexa+ voice-turn UI
+## Voice-turn UI
 
-A UI that mimics an Alexa+ voice interaction, backed by a real LLM tool-calling agent (not scripted) that drives the same MCP server over the same Streamable HTTP transport. Two frontends ship against the same backend — pick either, or run both.
+A UI that mimics a voice interaction, backed by a real LLM tool-calling agent (not scripted) that drives the same MCP server over the same Streamable HTTP transport. Two frontends ship against the same backend — pick either, or run both.
 
 Shared backend (`src/webapp/server.ts`, port 3334):
 1. Get a free Groq API key at [console.groq.com/keys](https://console.groq.com/keys) (no card needed), set `GROQ_API_KEY` in `.env`.
@@ -85,7 +79,7 @@ Shared backend (`src/webapp/server.ts`, port 3334):
    npm run webapp
    ```
 
-What happens under the hood: a frontend posts the transcript to `/api/voice-turn` → the backend (`src/webapp/agent.ts`) connects to the MCP server as a real MCP client, fetches the live tool list, and hands it to Groq (`openai/gpt-oss-120b`) as function-calling tools. The model itself decides what action items exist and which tools to call, in what order. This is a genuine agent loop, not a hardcoded script — swap the Groq call for a real Alexa+ Agent Skill invocation later and the MCP server underneath doesn't change.
+What happens under the hood: a frontend posts the transcript to `/api/voice-turn`, which streams back each step as it happens (NDJSON) → the backend (`src/webapp/agent.ts`) connects to the MCP server as a real MCP client, fetches the live tool list, and hands it to Groq (`openai/gpt-oss-120b`) as function-calling tools. The model itself decides what to do and which tools to call, in what order — a genuine agent loop, not a hardcoded script.
 
 ### Frontend: Streamlit (primary)
 
@@ -95,22 +89,8 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 streamlit run app.py
 ```
-Open `http://localhost:8501`. Record meeting notes with the mic (`st.audio_input`) — real speech-to-text via Groq Whisper (`/api/transcribe`), no browser speech API involved — or type/paste them, then "Send to agent." Tool calls, results, and the final summary render as a chat log.
+Open `http://localhost:8501`. Record meeting notes with the mic (`st.audio_input`) — real speech-to-text via Groq Whisper (`/api/transcribe`), no browser speech API involved — or type/paste them, then "Send to agent." Tool calls and results render collapsed by default; the final response is always visible.
 
 ### Frontend: static HTML (alternate)
 
 Served directly by the backend at `http://localhost:3334` (`src/webapp/public/index.html`). Uses the browser's Web Speech API for voice input (flakier — depends on Chrome reaching Google's speech backend over the network) and `speechSynthesis` to speak the final reply aloud.
-
-## Status
-
-- [x] Real MCP server, Streamable HTTP transport, spec 2025-06-18
-- [x] Live tool handlers for Linear, Notion, Slack (official TypeScript SDKs: `@linear/sdk`, `@notionhq/client`, `@slack/web-api`)
-- [x] End-to-end test client proving the full tool-call loop works against real APIs
-- [x] Simulated Alexa+ voice-turn UI ("Route B" companion), real Groq tool-calling agent, fronting this same server
-- [ ] Real Alexa+ Agent Skill integration, pending device/skill access during the hackathon window
-
-## Hackathon compliance note
-
-This satisfies the stricter "real MCP server" requirement (Route A): a working MCP server implementation with real tool handlers making live API calls, plus real clients (the test harness, and the Route B agent) that connect to and invoke it over the real Streamable HTTP transport.
-
-It also satisfies the simulated-experience path (Route B) independently: a web app that mimics the Alexa+ voice interaction, backed by a real agent loop (Groq function-calling) driving a real backend — not a mockup with hardcoded responses. Same MCP server underneath either way, so if real Alexa+ device access becomes available during the hackathon, it plugs in without touching the server.

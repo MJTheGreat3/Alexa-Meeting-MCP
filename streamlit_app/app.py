@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-BACKEND_URL = os.environ.get("ROUTE_B_BACKEND_URL", "http://localhost:3334")
+BACKEND_URL = os.environ.get("AGENT_BACKEND_URL", "http://localhost:3334")
 TYPE_DELAY_PER_WORD = 0.045
 
 st.set_page_config(page_title="Meeting Pipeline", page_icon="\U0001F399️", layout="centered")
@@ -30,19 +30,25 @@ st.markdown(
         display: inline-block; box-shadow: 0 0 8px #2fd99f; }
       h1 { font-weight: 700 !important; letter-spacing: -0.02em; }
       .thinking { display: flex; align-items: center; gap: 10px; color: #8990a8; font-size: 14px; padding: 4px 0; }
-      .thinking .ring {
-        width: 16px; height: 16px; border-radius: 50%;
-        border: 2px solid #262a3d; border-top-color: #6d8cff;
-        animation: spin 0.7s linear infinite;
+      .thinking .spinner-dots { display: inline-flex; gap: 4px; align-items: center; }
+      .thinking .spinner-dots span {
+        width: 6px; height: 6px; border-radius: 50%;
+        animation: dot-bounce 1.1s infinite ease-in-out both;
       }
-      @keyframes spin { to { transform: rotate(360deg); } }
+      .thinking .spinner-dots span:nth-child(1) { background: #6d8cff; animation-delay: -0.26s; }
+      .thinking .spinner-dots span:nth-child(2) { background: #9bb0ff; animation-delay: -0.13s; }
+      .thinking .spinner-dots span:nth-child(3) { background: #2fd99f; animation-delay: 0s; }
+      @keyframes dot-bounce {
+        0%, 70%, 100% { transform: translateY(0) scale(0.85); opacity: 0.5; }
+        35% { transform: translateY(-5px) scale(1.05); opacity: 1; }
+      }
     </style>
-    <div class="badge"><span class="dot"></span>Route B &middot; live demo</div>
+    <div class="badge"><span class="dot"></span>Live agent</div>
     """,
     unsafe_allow_html=True,
 )
 st.title("Meeting Pipeline")
-st.caption("Simulated Alexa+ voice turn · real MCP server · real Linear / Notion / Slack calls")
+st.caption("Voice-turn agent · real MCP server · real Linear / Notion / Slack calls")
 
 if "exchanges" not in st.session_state:
     st.session_state.exchanges = []
@@ -162,8 +168,9 @@ if send_clicked:
 
             with st.chat_message("assistant", avatar="\U0001F916"):
                 thinking = st.empty()
+                dots = '<span class="spinner-dots"><span></span><span></span><span></span></span>'
                 thinking.markdown(
-                    '<div class="thinking"><span class="ring"></span>Working on it...</div>',
+                    f'<div class="thinking">{dots}Working on it...</div>',
                     unsafe_allow_html=True,
                 )
                 turns = []
@@ -184,7 +191,7 @@ if send_clicked:
                         if turn["type"] == "tool_call":
                             step += 1
                             thinking.markdown(
-                                f'<div class="thinking"><span class="ring"></span>'
+                                f'<div class="thinking">{dots}'
                                 f"Working... step {step}: {turn['tool']}</div>",
                                 unsafe_allow_html=True,
                             )

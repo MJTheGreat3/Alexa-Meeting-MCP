@@ -57,6 +57,6 @@ app.post("/api/voice-turn", async (req, res) => {
 
 const port = Number(process.env.WEBAPP_PORT ?? 3334);
 app.listen(port, () => {
-  console.log(`Route B simulator listening on http://localhost:${port}`);
+  console.log(`Voice-turn backend listening on http://localhost:${port}`);
   console.log(`(expects the real MCP server running at ${process.env.MCP_SERVER_URL ?? "http://localhost:3333/mcp"})`);
 });
