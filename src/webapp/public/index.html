@@ -291,17 +291,37 @@ Priya: And can someone ping the team once both are filed so folks know to stop r
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ transcript }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Request failed');
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Request failed');
+      }
 
-      for (const turn of data.turns) {
-        if (turn.type === 'tool_call') {
-          addTurn('tool_call', 'Calling ' + turn.tool, renderResult(turn.args));
-        } else if (turn.type === 'tool_result') {
-          addTurn('tool_result' + (turn.isError ? ' error' : ''), turn.tool + ' result', renderResult(turn.result));
-        } else if (turn.type === 'final') {
-          addTurn('final', 'Alexa+', '<div>' + turn.text.replace(/</g, '&lt;') + '</div>');
-          speak(turn.text);
+      let stepCount = 0;
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let newlineIndex;
+        while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
+          const line = buffer.slice(0, newlineIndex).trim();
+          buffer = buffer.slice(newlineIndex + 1);
+          if (!line) continue;
+          const turn = JSON.parse(line);
+          if (turn.type === 'tool_call') {
+            stepCount++;
+            setStatus('Working... step ' + stepCount + ' (' + turn.tool + ')', true);
+            addTurn('tool_call', 'Calling ' + turn.tool, renderResult(turn.args));
+          } else if (turn.type === 'tool_result') {
+            addTurn('tool_result' + (turn.isError ? ' error' : ''), turn.tool + ' result', renderResult(turn.result));
+          } else if (turn.type === 'final') {
+            addTurn('final', 'Alexa+', '<div>' + turn.text.replace(/</g, '&lt;') + '</div>');
+            speak(turn.text);
+          } else if (turn.type === 'error') {
+            addTurn('tool_result error', 'Error', '<div>' + String(turn.text).replace(/</g, '&lt;') + '</div>');
+          }
         }
       }
       setStatus('Done', false);

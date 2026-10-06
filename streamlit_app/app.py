@@ -166,16 +166,30 @@ if send_clicked:
                     '<div class="thinking"><span class="ring"></span>Working on it...</div>',
                     unsafe_allow_html=True,
                 )
+                turns = []
                 try:
                     resp = requests.post(
                         f"{BACKEND_URL}/api/voice-turn",
                         json={"transcript": user_text},
-                        timeout=120,
+                        stream=True,
+                        timeout=(10, 90),
                     )
                     resp.raise_for_status()
-                    turns = resp.json().get("turns", [])
+                    step = 0
+                    for line in resp.iter_lines(decode_unicode=True):
+                        if not line:
+                            continue
+                        turn = json.loads(line)
+                        turns.append(turn)
+                        if turn["type"] == "tool_call":
+                            step += 1
+                            thinking.markdown(
+                                f'<div class="thinking"><span class="ring"></span>'
+                                f"Working... step {step}: {turn['tool']}</div>",
+                                unsafe_allow_html=True,
+                            )
                 except requests.RequestException as err:
-                    turns = [{"type": "error", "text": str(err)}]
+                    turns.append({"type": "error", "text": str(err)})
                 thinking.empty()
 
             render_tail(turns)

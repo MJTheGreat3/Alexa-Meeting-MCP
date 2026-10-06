@@ -41,12 +41,17 @@ app.post("/api/voice-turn", async (req, res) => {
     res.status(400).json({ error: "transcript is required" });
     return;
   }
+  res.setHeader("Content-Type", "application/x-ndjson");
+  res.flushHeaders();
   try {
-    const result = await runMeetingPipelineTurn(transcript);
-    res.json(result);
+    await runMeetingPipelineTurn(transcript, (turn) => {
+      res.write(JSON.stringify(turn) + "\n");
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: message });
+    res.write(JSON.stringify({ type: "error", text: message }) + "\n");
+  } finally {
+    res.end();
   }
 });
 

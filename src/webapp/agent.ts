@@ -34,7 +34,10 @@ function textOf(result: { content: Array<{ type: string; text?: string }> }) {
   return first?.text ?? "";
 }
 
-export async function runMeetingPipelineTurn(transcript: string): Promise<{
+export async function runMeetingPipelineTurn(
+  transcript: string,
+  onTurn?: (turn: AgentTurn) => void,
+): Promise<{
   turns: AgentTurn[];
   finalText: string;
 }> {
@@ -49,6 +52,10 @@ export async function runMeetingPipelineTurn(transcript: string): Promise<{
   await mcpClient.connect(transport);
 
   const turns: AgentTurn[] = [];
+  const push = (turn: AgentTurn) => {
+    turns.push(turn);
+    onTurn?.(turn);
+  };
 
   try {
     const { tools: mcpTools } = await mcpClient.listTools();
@@ -78,7 +85,7 @@ export async function runMeetingPipelineTurn(transcript: string): Promise<{
 
       if (!message.tool_calls || message.tool_calls.length === 0) {
         const finalText = message.content ?? "Done.";
-        turns.push({ type: "final", text: finalText });
+        push({ type: "final", text: finalText });
         return { turns, finalText };
       }
 
@@ -90,14 +97,14 @@ export async function runMeetingPipelineTurn(transcript: string): Promise<{
 
       for (const toolCall of message.tool_calls) {
         const args = JSON.parse(toolCall.function.arguments || "{}");
-        turns.push({ type: "tool_call", tool: toolCall.function.name, args });
+        push({ type: "tool_call", tool: toolCall.function.name, args });
 
         const result = await mcpClient.callTool({
           name: toolCall.function.name,
           arguments: args,
         });
         const resultText = textOf(result as any);
-        turns.push({
+        push({
           type: "tool_result",
           tool: toolCall.function.name,
           result: (() => {
@@ -119,7 +126,7 @@ export async function runMeetingPipelineTurn(transcript: string): Promise<{
     }
 
     const finalText = "Reached the step limit before finishing - check the tool log above.";
-    turns.push({ type: "final", text: finalText });
+    push({ type: "final", text: finalText });
     return { turns, finalText };
   } finally {
     await mcpClient.close();
