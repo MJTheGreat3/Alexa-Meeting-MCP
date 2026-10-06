@@ -27,8 +27,12 @@ src/
   webapp/
     agent.ts             Groq tool-calling loop: connects to the MCP server as a
                           real client, lets the LLM decide which tools to call
-    server.ts            Express app serving the simulator UI + /api/voice-turn
-    public/index.html     Simulated Alexa+ voice-turn UI (mic input + spoken reply)
+    server.ts            Express app: /api/voice-turn (agent), /api/transcribe
+                          (Groq Whisper), + serves the static HTML frontend
+    public/index.html     Static HTML frontend (alternate to Streamlit)
+streamlit_app/
+  app.py                 Streamlit frontend (primary), calls the same backend
+  requirements.txt
 ```
 
 The extraction of action items from raw meeting text is the *agent's* reasoning step (Alexa+, Claude, etc.) — it happens before any tool call. The server itself only performs the deterministic actions once the agent has decided what to do: create this issue, file this summary, notify this channel.
@@ -72,18 +76,30 @@ The extraction of action items from raw meeting text is the *agent's* reasoning 
 
 ## Route B: simulated Alexa+ voice-turn UI
 
-A web UI that mimics an Alexa+ voice interaction, backed by a real LLM tool-calling agent (not scripted) that drives the same MCP server over the same Streamable HTTP transport.
+A UI that mimics an Alexa+ voice interaction, backed by a real LLM tool-calling agent (not scripted) that drives the same MCP server over the same Streamable HTTP transport. Two frontends ship against the same backend — pick either, or run both.
 
+Shared backend (`src/webapp/server.ts`, port 3334):
 1. Get a free Groq API key at [console.groq.com/keys](https://console.groq.com/keys) (no card needed), set `GROQ_API_KEY` in `.env`.
-2. With the MCP server already running (`npm run dev`), start the simulator in another terminal:
+2. With the MCP server already running (`npm run dev`), start the backend in another terminal:
    ```
    npm run webapp
    ```
-3. Open `http://localhost:3334`. Tap the mic (uses the browser's Web Speech API) or type/paste meeting notes, then "Send to agent."
 
-What happens under the hood: the browser posts the transcript to `/api/voice-turn` → the backend (`src/webapp/agent.ts`) connects to the MCP server as a real MCP client, fetches the live tool list, and hands it to Groq (`openai/gpt-oss-120b`) as function-calling tools. The model itself decides what action items exist and which tools to call, in what order — the UI streams back each tool call/result as a conversation turn, then speaks the final spoken-style summary aloud via `speechSynthesis`.
+What happens under the hood: a frontend posts the transcript to `/api/voice-turn` → the backend (`src/webapp/agent.ts`) connects to the MCP server as a real MCP client, fetches the live tool list, and hands it to Groq (`openai/gpt-oss-120b`) as function-calling tools. The model itself decides what action items exist and which tools to call, in what order. This is a genuine agent loop, not a hardcoded script — swap the Groq call for a real Alexa+ Agent Skill invocation later and the MCP server underneath doesn't change.
 
-This is a genuine agent loop, not a hardcoded script — swap the Groq call for a real Alexa+ Agent Skill invocation later and the MCP server underneath doesn't change.
+### Frontend: Streamlit (primary)
+
+```
+cd streamlit_app
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+streamlit run app.py
+```
+Open `http://localhost:8501`. Record meeting notes with the mic (`st.audio_input`) — real speech-to-text via Groq Whisper (`/api/transcribe`), no browser speech API involved — or type/paste them, then "Send to agent." Tool calls, results, and the final summary render as a chat log.
+
+### Frontend: static HTML (alternate)
+
+Served directly by the backend at `http://localhost:3334` (`src/webapp/public/index.html`). Uses the browser's Web Speech API for voice input (flakier — depends on Chrome reaching Google's speech backend over the network) and `speechSynthesis` to speak the final reply aloud.
 
 ## Status
 

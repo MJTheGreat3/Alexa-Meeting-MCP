@@ -2,3 +2,5 @@ node_modules/
 dist/
 .env
 *.log
+streamlit_app/.venv/
+streamlit_app/__pycache__/

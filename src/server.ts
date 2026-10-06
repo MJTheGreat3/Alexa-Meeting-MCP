@@ -58,6 +58,127 @@ export function buildServer() {
   );
 
   server.registerTool(
+    "linear_list_users",
+    {
+      title: "List Linear Users",
+      description:
+        "List workspace members and their user ids. Use this to find an assigneeId for linear_create_issue or linear_update_issue.",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        return text(await linear.listUsers());
+      } catch (err) {
+        return errorText(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    "linear_list_issues",
+    {
+      title: "List Linear Issues",
+      description:
+        "List issues on a team, with their identifiers (e.g. MEE-7), titles, state, and assignee. Use this to find the right issue before updating, completing, or archiving it.",
+      inputSchema: {
+        teamId: z.string().describe("Linear team id, from linear_list_teams"),
+        includeCompleted: z
+          .boolean()
+          .optional()
+          .describe("Include done/canceled issues too (default: only open issues)"),
+      },
+    },
+    async ({ teamId, includeCompleted }) => {
+      try {
+        return text(await linear.listIssues({ teamId, includeCompleted }));
+      } catch (err) {
+        return errorText(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    "linear_update_issue",
+    {
+      title: "Update Linear Issue",
+      description:
+        "Edit an existing Linear issue's title, description, or assignee. Use the issue identifier (e.g. MEE-7) from linear_list_issues or a prior tool result.",
+      inputSchema: {
+        idOrIdentifier: z.string().describe("Issue id or identifier, e.g. MEE-7"),
+        title: z.string().optional(),
+        description: z.string().optional(),
+        assigneeId: z.string().optional().describe("User id to assign, from linear_list_users"),
+      },
+    },
+    async ({ idOrIdentifier, title, description, assigneeId }) => {
+      try {
+        return text(await linear.updateIssue({ idOrIdentifier, title, description, assigneeId }));
+      } catch (err) {
+        return errorText(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    "linear_set_issue_status",
+    {
+      title: "Set Linear Issue Status",
+      description:
+        "Move a Linear issue to a new workflow status, e.g. mark it done, in progress, or back to backlog.",
+      inputSchema: {
+        idOrIdentifier: z.string().describe("Issue id or identifier, e.g. MEE-7"),
+        status: z.enum(["backlog", "todo", "in_progress", "done", "canceled"]),
+      },
+    },
+    async ({ idOrIdentifier, status }) => {
+      try {
+        return text(await linear.setIssueStatus({ idOrIdentifier, status }));
+      } catch (err) {
+        return errorText(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    "linear_archive_issue",
+    {
+      title: "Archive Linear Issue",
+      description:
+        "Remove an issue by archiving it (Linear's reversible soft-delete, recoverable from trash). Use when the user asks to remove, delete, or cancel a task entirely rather than just marking it done.",
+      inputSchema: {
+        idOrIdentifier: z.string().describe("Issue id or identifier, e.g. MEE-7"),
+      },
+    },
+    async ({ idOrIdentifier }) => {
+      try {
+        return text(await linear.archiveIssue({ idOrIdentifier }));
+      } catch (err) {
+        return errorText(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    "linear_add_comment",
+    {
+      title: "Add Linear Comment",
+      description:
+        "Add a comment to an existing Linear issue, e.g. extra detail from a follow-up meeting, or an update for a teammate.",
+      inputSchema: {
+        idOrIdentifier: z.string().describe("Issue id or identifier, e.g. MEE-7"),
+        body: z.string().describe("Comment text (Markdown supported)"),
+      },
+    },
+    async ({ idOrIdentifier, body }) => {
+      try {
+        return text(await linear.addComment({ idOrIdentifier, body }));
+      } catch (err) {
+        return errorText(err);
+      }
+    },
+  );
+
+  server.registerTool(
     "notion_create_meeting_summary",
     {
       title: "Create Notion Meeting Summary",
@@ -79,6 +200,65 @@ export function buildServer() {
     async ({ title, actionItems, rawNotes }) => {
       try {
         return text(await notion.createMeetingSummary({ title, actionItems, rawNotes }));
+      } catch (err) {
+        return errorText(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    "notion_append_notes",
+    {
+      title: "Append Notion Notes",
+      description:
+        "Add more detail to an existing Notion meeting summary page, e.g. follow-up notes or extra context, without overwriting what's already there.",
+      inputSchema: {
+        pageId: z.string().describe("Notion page id, from notion_create_meeting_summary"),
+        text: z.string().describe("Text to append as a new paragraph"),
+      },
+    },
+    async ({ pageId, text: noteText }) => {
+      try {
+        return text(await notion.appendNotes({ pageId, text: noteText }));
+      } catch (err) {
+        return errorText(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    "notion_set_action_item_checked",
+    {
+      title: "Check Off Notion Action Item",
+      description:
+        "Mark an action item checkbox as done (or not done) on a Notion meeting summary page. Match the item by a substring of its text.",
+      inputSchema: {
+        pageId: z.string().describe("Notion page id, from notion_create_meeting_summary"),
+        itemText: z.string().describe("Substring of the action item's text to match"),
+        checked: z.boolean().describe("true to mark complete, false to uncheck"),
+      },
+    },
+    async ({ pageId, itemText, checked }) => {
+      try {
+        return text(await notion.setActionItemChecked({ pageId, itemText, checked }));
+      } catch (err) {
+        return errorText(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    "notion_archive_page",
+    {
+      title: "Archive Notion Page",
+      description: "Remove a Notion page by archiving it (reversible, recoverable from trash).",
+      inputSchema: {
+        pageId: z.string().describe("Notion page id"),
+      },
+    },
+    async ({ pageId }) => {
+      try {
+        return text(await notion.archivePage({ pageId }));
       } catch (err) {
         return errorText(err);
       }
@@ -116,6 +296,44 @@ export function buildServer() {
     async ({ channel, text: messageText }) => {
       try {
         return text(await slack.notifyChannel({ channel, text: messageText }));
+      } catch (err) {
+        return errorText(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    "slack_list_users",
+    {
+      title: "List Slack Users",
+      description:
+        "List workspace members and their user ids. Use this to @mention someone in a Slack message: include <@USER_ID> in the text.",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        return text(await slack.listUsers());
+      } catch (err) {
+        return errorText(err);
+      }
+    },
+  );
+
+  server.registerTool(
+    "slack_update_message",
+    {
+      title: "Edit Slack Message",
+      description:
+        "Edit a previously posted Slack message, e.g. to update a status summary once tasks are completed.",
+      inputSchema: {
+        channel: z.string().describe("Slack channel id"),
+        ts: z.string().describe("Timestamp id of the message to edit, from the original post's result"),
+        text: z.string().describe("New message text"),
+      },
+    },
+    async ({ channel, ts, text: messageText }) => {
+      try {
+        return text(await slack.updateMessage({ channel, ts, text: messageText }));
       } catch (err) {
         return errorText(err);
       }

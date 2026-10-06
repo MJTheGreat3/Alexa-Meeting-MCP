@@ -62,3 +62,42 @@ export async function createMeetingSummary(input: {
   const url = "url" in page ? page.url : undefined;
   return { id: page.id, url };
 }
+
+export async function appendNotes(input: { pageId: string; text: string }) {
+  const result = await getClient().blocks.children.append({
+    block_id: input.pageId,
+    children: [
+      {
+        object: "block",
+        type: "paragraph",
+        paragraph: { rich_text: [{ text: { content: input.text.slice(0, 2000) } }] },
+      },
+    ],
+  });
+  return { appended: result.results.length };
+}
+
+export async function setActionItemChecked(input: {
+  pageId: string;
+  itemText: string;
+  checked: boolean;
+}) {
+  const children = await getClient().blocks.children.list({ block_id: input.pageId });
+  const match = children.results.find(
+    (block): block is typeof block & { type: "to_do"; to_do: { rich_text: { plain_text: string }[] } } =>
+      "type" in block &&
+      block.type === "to_do" &&
+      block.to_do.rich_text.some((rt) => rt.plain_text.includes(input.itemText)),
+  );
+  if (!match) throw new Error(`No to-do block on page ${input.pageId} matching "${input.itemText}"`);
+  await getClient().blocks.update({
+    block_id: match.id,
+    to_do: { checked: input.checked },
+  });
+  return { id: match.id, checked: input.checked };
+}
+
+export async function archivePage(input: { pageId: string }) {
+  await getClient().pages.update({ page_id: input.pageId, archived: true });
+  return { id: input.pageId, archived: true };
+}

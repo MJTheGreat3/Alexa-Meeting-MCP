@@ -26,3 +26,19 @@ export async function notifyChannel(input: { channel: string; text: string }) {
   });
   return { ok: result.ok, ts: result.ts, channel: result.channel };
 }
+
+export async function listUsers() {
+  const result = await getClient().users.list({});
+  return (result.members ?? [])
+    .filter((m) => !m.is_bot && !m.deleted)
+    .map((m) => ({ id: m.id, name: m.name, realName: m.real_name }));
+}
+
+export async function updateMessage(input: { channel: string; ts: string; text: string }) {
+  const result = await getClient().chat.update({
+    channel: input.channel,
+    ts: input.ts,
+    text: input.text,
+  });
+  return { ok: result.ok, ts: result.ts, channel: result.channel };
+}
