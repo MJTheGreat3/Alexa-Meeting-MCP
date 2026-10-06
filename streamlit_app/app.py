@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import time
 from pathlib import Path
 
 import requests
@@ -10,11 +11,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 BACKEND_URL = os.environ.get("ROUTE_B_BACKEND_URL", "http://localhost:3334")
-
-SAMPLE_TRANSCRIPT = """Standup - Oct 6
-Priya: Checkout page still throws a 500 when the cart is empty, need someone on that today.
-Dev: I'll also write up the API rate-limit doc so support stops getting paged for it.
-Priya: And can someone ping the team once both are filed so folks know to stop retrying?"""
+TYPE_DELAY_SECONDS = 0.014
 
 st.set_page_config(page_title="Meeting Pipeline", page_icon="\U0001F399️", layout="centered")
 
@@ -31,6 +28,13 @@ st.markdown(
       .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: #2fd99f;
         display: inline-block; box-shadow: 0 0 8px #2fd99f; }
       h1 { font-weight: 700 !important; letter-spacing: -0.02em; }
+      .thinking { display: flex; align-items: center; gap: 10px; color: #8990a8; font-size: 14px; padding: 4px 0; }
+      .thinking .ring {
+        width: 16px; height: 16px; border-radius: 50%;
+        border: 2px solid #262a3d; border-top-color: #6d8cff;
+        animation: spin 0.7s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
     </style>
     <div class="badge"><span class="dot"></span>Route B &middot; live demo</div>
     """,
@@ -39,14 +43,62 @@ st.markdown(
 st.title("Meeting Pipeline")
 st.caption("Simulated Alexa+ voice turn · real MCP server · real Linear / Notion / Slack calls")
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-if "transcript" not in st.session_state:
-    st.session_state.transcript = SAMPLE_TRANSCRIPT
+if "exchanges" not in st.session_state:
+    st.session_state.exchanges = []
 if "last_audio_hash" not in st.session_state:
     st.session_state.last_audio_hash = None
+if "audio_key" not in st.session_state:
+    st.session_state.audio_key = 0
+if "clear_transcript" not in st.session_state:
+    st.session_state.clear_transcript = False
 
-audio = st.audio_input("Record meeting notes (transcribed by Groq Whisper)")
+if st.session_state.clear_transcript:
+    st.session_state["transcript_box"] = ""
+    st.session_state.clear_transcript = False
+
+log_container = st.container()
+
+
+def render_tail(turns):
+    tool_turns = [t for t in turns if t.get("type") in ("tool_call", "tool_result")]
+    final_turn = next((t for t in turns if t.get("type") == "final"), None)
+    error_turn = next((t for t in turns if t.get("type") == "error"), None)
+
+    if tool_turns:
+        call_count = sum(1 for t in tool_turns if t.get("type") == "tool_call")
+        with st.expander(f"\U0001F6E0️ {call_count} tool call(s)", expanded=False):
+            for t in tool_turns:
+                if t["type"] == "tool_call":
+                    st.markdown(f"**Calling `{t['tool']}`**")
+                    st.code(json.dumps(t["args"], indent=2), language="json")
+                else:
+                    st.markdown(f"**{t['tool']} result**" + (" ❌" if t.get("isError") else " ✅"))
+                    result = t["result"]
+                    if isinstance(result, (dict, list)):
+                        st.code(json.dumps(result, indent=2), language="json")
+                    else:
+                        st.write(result)
+
+    if final_turn:
+        with st.chat_message("assistant", avatar="\U0001F916"):
+            st.success(final_turn["text"])
+    if error_turn:
+        with st.chat_message("assistant", avatar="⚠️"):
+            st.error(error_turn["text"])
+
+
+def render_exchange(user_text, turns):
+    with st.chat_message("user"):
+        st.write(user_text)
+    render_tail(turns)
+
+
+# --- input composer (below the log, per layout preference) ---
+
+audio = st.audio_input(
+    "Record meeting notes (transcribed by Groq Whisper)",
+    key=f"audio_input_{st.session_state.audio_key}",
+)
 if audio is not None:
     audio_bytes = audio.getvalue()
     audio_hash = hashlib.sha256(audio_bytes).hexdigest()
@@ -63,13 +115,13 @@ if audio is not None:
                 resp.raise_for_status()
                 text = resp.json().get("text", "").strip()
                 if text:
-                    st.session_state.transcript = text
+                    st.session_state["transcript_box"] = text
             except requests.RequestException as err:
                 st.error(f"Transcription failed: {err}")
 
 transcript = st.text_area(
     "Meeting notes",
-    key="transcript",
+    key="transcript_box",
     height=140,
     placeholder="Paste or record meeting notes...",
 )
@@ -79,50 +131,60 @@ send_clicked = col1.button("Send to agent", type="primary", use_container_width=
 clear_clicked = col2.button("Clear conversation", use_container_width=True)
 
 if clear_clicked:
-    st.session_state.messages = []
+    st.session_state.exchanges = []
+    st.session_state.audio_key += 1
+    st.session_state.last_audio_hash = None
+    st.session_state.clear_transcript = True
     st.rerun()
 
+did_animate = False
+
 if send_clicked:
-    text = transcript.strip()
-    if not text:
+    user_text = transcript.strip()
+    if not user_text:
         st.warning("Write or record some meeting notes first.")
     else:
-        st.session_state.messages.append({"role": "user", "text": text})
-        with st.spinner("Agent is working..."):
-            try:
-                resp = requests.post(
-                    f"{BACKEND_URL}/api/voice-turn",
-                    json={"transcript": text},
-                    timeout=120,
+        did_animate = True
+        with log_container:
+            with st.chat_message("user"):
+                placeholder = st.empty()
+                shown = ""
+                for ch in user_text:
+                    shown += ch
+                    placeholder.write(shown + "▌")
+                    time.sleep(TYPE_DELAY_SECONDS)
+                placeholder.write(user_text)
+
+            with st.chat_message("assistant", avatar="\U0001F916"):
+                thinking = st.empty()
+                thinking.markdown(
+                    '<div class="thinking"><span class="ring"></span>Working on it...</div>',
+                    unsafe_allow_html=True,
                 )
-                resp.raise_for_status()
-                data = resp.json()
-                for turn in data.get("turns", []):
-                    st.session_state.messages.append(turn)
-            except requests.RequestException as err:
-                st.session_state.messages.append({"type": "error", "text": str(err)})
+                try:
+                    resp = requests.post(
+                        f"{BACKEND_URL}/api/voice-turn",
+                        json={"transcript": user_text},
+                        timeout=120,
+                    )
+                    resp.raise_for_status()
+                    turns = resp.json().get("turns", [])
+                except requests.RequestException as err:
+                    turns = [{"type": "error", "text": str(err)}]
+                thinking.empty()
+
+            render_tail(turns)
+
+            for exchange in st.session_state.exchanges:
+                render_exchange(exchange["user"], exchange["turns"])
+
+        st.session_state.exchanges.insert(0, {"user": user_text, "turns": turns})
+        st.session_state.audio_key += 1
+        st.session_state.last_audio_hash = None
+        st.session_state.clear_transcript = True
         st.rerun()
 
-for msg in st.session_state.messages:
-    if msg.get("role") == "user":
-        with st.chat_message("user"):
-            st.write(msg["text"])
-    elif msg.get("type") == "tool_call":
-        with st.chat_message("assistant", avatar="\U0001F6E0️"):
-            st.markdown(f"**Calling `{msg['tool']}`**")
-            st.code(json.dumps(msg["args"], indent=2), language="json")
-    elif msg.get("type") == "tool_result":
-        avatar = "❌" if msg.get("isError") else "✅"
-        with st.chat_message("assistant", avatar=avatar):
-            st.markdown(f"**{msg['tool']} result**")
-            result = msg["result"]
-            if isinstance(result, (dict, list)):
-                st.code(json.dumps(result, indent=2), language="json")
-            else:
-                st.write(result)
-    elif msg.get("type") == "final":
-        with st.chat_message("assistant", avatar="\U0001F916"):
-            st.success(msg["text"])
-    elif msg.get("type") == "error":
-        with st.chat_message("assistant", avatar="⚠️"):
-            st.error(msg["text"])
+if not did_animate:
+    with log_container:
+        for exchange in st.session_state.exchanges:
+            render_exchange(exchange["user"], exchange["turns"])
